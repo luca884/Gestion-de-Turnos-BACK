@@ -6,6 +6,8 @@ import lombok.Data;
 @Data
 @AllArgsConstructor
 public class UserInfoResponseDTO {
+    private Long id;
     private String email;
     private String role;
+
 }

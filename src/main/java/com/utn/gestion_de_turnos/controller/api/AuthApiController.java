@@ -113,6 +113,7 @@ public class AuthApiController {
         CustomUserDetails userDetails = (CustomUserDetails) authentication.getPrincipal();
 
         UserInfoResponseDTO response = new UserInfoResponseDTO(
+                userDetails.getId(),
                 userDetails.getUsername(), // email
                 userDetails.getAuthorities().stream()
                         .map(GrantedAuthority::getAuthority)
