@@ -26,19 +26,72 @@ public class EmpleadoService {
     @Autowired
     private ClienteRepository clienteRepository;
 
-    public Empleado save(Empleado empleado) {
-        if (empleado == null) {
-            throw new IllegalArgumentException("Empleado no puede ser nulo");
+//    public Empleado save(Empleado empleado) {
+//        if (empleado == null) {
+//            throw new IllegalArgumentException("Empleado no puede ser nulo");
+//        }
+//        if (empleado.getId() == null) {
+//            empleado.setContrasena(passwordEncoder.encode(empleado.getContrasena()));
+//        } else {
+//            Empleado existente = empleadoRepository.findById(empleado.getId())
+//                    .orElseThrow(() -> new IllegalArgumentException("Empleado no encontrado con ID: " + empleado.getId()));
+//            empleado.setContrasena(existente.getContrasena());
+//        }
+//        return empleadoRepository.save(empleado);
+//    }
+public Empleado save(Empleado empleado) {
+    if (empleado == null) {
+        throw new IllegalArgumentException("Empleado no puede ser nulo");
+    }
+
+    System.out.println("=== EmpleadoService.save() ===");
+    System.out.println("ID recibido: " + empleado.getId());
+    System.out.println("Email recibido: " + empleado.getEmail());
+    System.out.println("Contraseña recibida (tal cual llega): " + empleado.getContrasena());
+
+    // ✅ CASO 1: crear nuevo empleado
+    if (empleado.getId() == null) {
+        if (empleado.getContrasena() == null || empleado.getContrasena().isBlank()) {
+            throw new IllegalArgumentException("La contraseña no puede ser nula o vacía al registrar un empleado nuevo");
         }
-        if (empleado.getId() == null) {
-            empleado.setContrasena(passwordEncoder.encode(empleado.getContrasena()));
-        } else {
-            Empleado existente = empleadoRepository.findById(empleado.getId())
-                    .orElseThrow(() -> new IllegalArgumentException("Empleado no encontrado con ID: " + empleado.getId()));
-            empleado.setContrasena(existente.getContrasena());
-        }
+
+        // encriptamos la pass en texto plano
+        empleado.setContrasena(passwordEncoder.encode(empleado.getContrasena()));
         return empleadoRepository.save(empleado);
     }
+
+    // ✅ CASO 2: actualizar empleado existente
+    Empleado existente = empleadoRepository.findById(empleado.getId())
+            .orElseThrow(() -> new IllegalArgumentException("Empleado no encontrado con ID: " + empleado.getId()));
+
+    System.out.println("Hash actual en BD: " + existente.getContrasena());
+
+    // 2.1 actualizar datos básicos
+    existente.setNombre(empleado.getNombre());
+    existente.setApellido(empleado.getApellido());
+    existente.setDni(empleado.getDni());
+    existente.setTelefono(empleado.getTelefono());
+    existente.setEmail(empleado.getEmail());
+    existente.setLegajo(empleado.getLegajo());
+    existente.setRol(empleado.getRol());
+
+    // 2.2 lógica de contraseña
+    String contrasenaEnviada = empleado.getContrasena();   // lo que mandó el front
+    String hashActual = existente.getContrasena();         // lo que hay en la BD
+
+    if (contrasenaEnviada == null || contrasenaEnviada.isBlank()) {
+        // NO tocamos la contraseña
+    } else if (contrasenaEnviada.equals(hashActual)) {
+        // llegó el mismo hash → no cambiamos nada
+    } else {
+        // asumimos que lo que viene es una NUEVA pass en texto plano
+        String nuevoHash = passwordEncoder.encode(contrasenaEnviada);
+        existente.setContrasena(nuevoHash);
+    }
+
+    return empleadoRepository.save(existente);
+}
+
 
     public Optional<Empleado> findById(Long id) {
         return empleadoRepository.findById(id);

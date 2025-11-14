@@ -88,4 +88,32 @@ public class ClienteApiController {
     public void deleteCliente(@PathVariable Long id) {
         clienteService.deleteById(id);
     }
+
+    @PutMapping("/update")
+    @Operation(
+            summary = "Actualizar un cliente existente",
+            description = "Actualiza los datos de un cliente. Si la contraseña enviada es distinta al hash actual, se encripta como una nueva contraseña."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Cliente actualizado",
+                    content = @Content(
+                            mediaType = "application/json",
+                            schema = @Schema(implementation = Cliente.class)
+                    )),
+            @ApiResponse(responseCode = "400", description = "Datos inválidos"),
+            @ApiResponse(responseCode = "404", description = "Cliente no encontrado")
+    })
+    public ResponseEntity<?> updateCliente(@RequestBody Cliente cliente) {
+        try {
+            Cliente actualizado = clienteService.save(cliente);
+            return ResponseEntity.ok(actualizado);
+        } catch (IllegalArgumentException e) {
+            // casos como "cliente no encontrado" o "contraseña inválida"
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (Exception e) {
+            e.printStackTrace(); // para ver el error real en la consola
+            return ResponseEntity.internalServerError().body("Error al actualizar el cliente");
+        }
+    }
+
 }

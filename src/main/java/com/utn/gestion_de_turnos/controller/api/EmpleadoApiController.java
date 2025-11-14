@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -80,6 +81,35 @@ public class EmpleadoApiController {
     @DeleteMapping("/{id}")
     public void deleteEmpleado(@PathVariable Long id) {
         empleadoService.deleteById(id);
+    }
+
+    // 🔁 UPDATE (pensado para PUT /api/empleado/{id})
+    @PutMapping("/{id}")
+    @Operation(
+            summary = "Actualizar un empleado existente",
+            description = "Actualiza los datos de un empleado. Si la contraseña enviada es distinta al hash actual, se encripta como una nueva contraseña."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Empleado actualizado",
+                    content = @Content(
+                            mediaType = "application/json",
+                            schema = @Schema(implementation = Empleado.class)
+                    )),
+            @ApiResponse(responseCode = "400", description = "Datos inválidos"),
+            @ApiResponse(responseCode = "404", description = "Empleado no encontrado")
+    })
+    public ResponseEntity<?> updateEmpleado(@PathVariable Long id, @RequestBody Empleado empleado) {
+        try {
+            // nos aseguramos de que el ID del body coincida con el de la URL
+            empleado.setId(id);
+            Empleado actualizado = empleadoService.save(empleado);
+            return ResponseEntity.ok(actualizado);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(e.getMessage());
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().body("Error al actualizar el empleado");
+        }
     }
 
 }
