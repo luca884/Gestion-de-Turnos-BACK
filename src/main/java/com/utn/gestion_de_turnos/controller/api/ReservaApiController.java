@@ -13,6 +13,7 @@ import com.utn.gestion_de_turnos.model.Sala;
 import com.utn.gestion_de_turnos.repository.SalaRepository;
 import com.utn.gestion_de_turnos.repository.UsuarioRepository;
 import com.utn.gestion_de_turnos.security.CustomUserDetails;
+import com.utn.gestion_de_turnos.service.MercadoPagoService;
 import com.utn.gestion_de_turnos.service.ReservaService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.media.Content;
@@ -46,6 +47,9 @@ public class ReservaApiController {
 
     @Autowired
     private SalaRepository salaRepository;
+    @Autowired
+    private MercadoPagoService mercadoPagoService;
+
 
     @Operation(summary = "Crear una reserva", description = "Permite a un cliente autenticado crear una nueva reserva.")
     @ApiResponses(value = {
@@ -66,7 +70,8 @@ public class ReservaApiController {
                 request.getSalaId(),
                 request.getFechaInicio(),
                 request.getFechaFinal(),
-                request.getTipoPago()
+                request.getTipoPago(),
+                request.getMonto()
         );
 
         return ResponseEntity.ok(reserva);
@@ -88,7 +93,8 @@ public class ReservaApiController {
                 request.getSalaId(),
                 request.getFechaInicio(),
                 request.getFechaFinal(),
-                request.getTipoPago()
+                request.getTipoPago(),
+                request.getMonto()
         );
 
         return ResponseEntity.ok(reserva);
@@ -225,10 +231,34 @@ public class ReservaApiController {
                         reserva.getFechaFinal(),
                         reserva.getTipoPago(),
                         reserva.getEstado().name(),
-                        reserva.getCliente().getEmail()))
+                        reserva.getCliente().getEmail(),
+                        reserva.getMonto()))
                 .toList();
 
         return ResponseEntity.ok(reservasActivas);
+    }
+
+
+    @Operation(
+            summary = "Generar link de pago Mercado Pago para una reserva",
+            description = "Devuelve la URL de pago (Checkout Pro) para la reserva indicada."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Link generado correctamente", content = @Content),
+            @ApiResponse(responseCode = "404", description = "Reserva no encontrada", content = @Content)
+    })
+    @PostMapping("/{id}/pago/mercado-pago")
+    public ResponseEntity<?> generarLinkPago(@PathVariable Long id) {
+
+        Reserva reserva = reservaService.findById(id)
+                .orElseThrow(() -> new ReservaNotFoundException("Reserva no encontrada"));
+
+        // Si querés, podés validar acá que tipoPago sea MERCADO_PAGO
+        // if (reserva.getTipoPago() != Reserva.TipoPago.MERCADO_PAGO) ...
+
+        String initPoint = mercadoPagoService.crearPreferenciaParaReserva(reserva);
+
+        return ResponseEntity.ok(Map.of("initPoint", initPoint));
     }
 
 }
