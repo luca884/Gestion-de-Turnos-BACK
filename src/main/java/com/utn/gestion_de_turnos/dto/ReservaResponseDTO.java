@@ -4,6 +4,7 @@ import com.utn.gestion_de_turnos.model.Reserva;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Data
@@ -17,4 +18,5 @@ public class ReservaResponseDTO {
     private Reserva.TipoPago tipoPago;
     private String estado;
     private String clienteEmail;
+    private BigDecimal monto;
 }

@@ -3,6 +3,7 @@ package com.utn.gestion_de_turnos.model;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Data
@@ -35,6 +36,18 @@ public class Reserva {
     @Enumerated(EnumType.STRING)
     @Column(name = "tipo_pago", nullable = false)
     private TipoPago tipoPago;
+
+    @Column(name = "monto")
+    private BigDecimal monto;
+
+    // getters y setters
+    public BigDecimal getMonto() {
+        return monto;
+    }
+
+    public void setMonto(BigDecimal monto) {
+        this.monto = monto;
+    }
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

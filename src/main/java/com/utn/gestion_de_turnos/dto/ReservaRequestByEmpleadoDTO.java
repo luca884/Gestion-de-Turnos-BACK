@@ -4,6 +4,7 @@ import com.utn.gestion_de_turnos.model.Reserva;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Data
@@ -23,4 +24,7 @@ public class ReservaRequestByEmpleadoDTO {
 
     @NotNull(message = "tipoPago es obligatorio")
     private Reserva.TipoPago tipoPago;
+
+    @NotNull(message = "monto es obligatorio")
+    private BigDecimal monto;
 }

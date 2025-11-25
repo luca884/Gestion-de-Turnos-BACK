@@ -22,6 +22,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.security.GeneralSecurityException;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -43,7 +44,7 @@ public class ReservaService {
     private UsuarioRepository usuarioRepository;
 
     @Transactional
-    public Reserva saveReserva(Long clienteId, Long salaId, LocalDateTime fechaInicio, LocalDateTime fechaFinal, Reserva.TipoPago tipoPago) {
+    public Reserva saveReserva(Long clienteId, Long salaId, LocalDateTime fechaInicio, LocalDateTime fechaFinal, Reserva.TipoPago tipoPago, BigDecimal monto) {
 
         Cliente cliente = clienteRepository.findById(clienteId).orElseThrow(() ->
                 new RuntimeException("Cliente no encontrado"));
@@ -60,6 +61,7 @@ public class ReservaService {
         reserva.setFechaFinal(fechaFinal);
         reserva.setTipoPago(tipoPago);
         reserva.setEstado(Reserva.Estado.ACTIVO);
+        reserva.setMonto(monto);
 
         reservaRepository.save(reserva);
 
