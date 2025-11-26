@@ -51,6 +51,88 @@ public class ReservaApiController {
     private MercadoPagoService mercadoPagoService;
 
 
+    @Operation(
+            summary = "Historial de reservas de un cliente",
+            description = "Devuelve el historial (reservas pasadas o no activas) del cliente indicado."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Historial obtenido correctamente"),
+            @ApiResponse(responseCode = "403", description = "Acceso prohibido", content = @Content)
+    })
+    @GetMapping("/historial/{idCliente}")
+    public ResponseEntity<List<ReservaResponseDTO>> getHistorialPorCliente(
+            @PathVariable Long idCliente,
+            Authentication authentication) {
+
+        CustomUserDetails user = (CustomUserDetails) authentication.getPrincipal();
+
+        boolean esAdminOEmpleado = user.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ADMIN") || a.getAuthority().equals("EMPLEADO"));
+
+        // El cliente solo puede ver su propio historial
+        if (!esAdminOEmpleado && !user.getId().equals(idCliente)) {
+            throw new AccesoProhibidoException("No tenés permiso para ver el historial de este cliente");
+        }
+
+        List<ReservaResponseDTO> historial = reservaService.obtenerHistorialCliente(idCliente)
+                .stream()
+                .map(reserva -> new ReservaResponseDTO(
+                        reserva.getId(),
+                        reserva.getSala().getNumero(),
+                        reserva.getSala().getCantPersonas(),
+                        reserva.getFechaInicio(),
+                        reserva.getFechaFinal(),
+                        reserva.getTipoPago(),
+                        reserva.getEstado().name(),
+                        reserva.getCliente().getEmail(),
+                        reserva.getMonto()
+                ))
+                .toList();
+
+        return ResponseEntity.ok(historial);
+    }
+
+
+    @Operation(
+            summary = "Historial general de reservas",
+            description = "Devuelve el historial de todas las reservas (pasadas o no activas). Solo ADMIN o EMPLEADO."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Historial obtenido correctamente"),
+            @ApiResponse(responseCode = "403", description = "Acceso prohibido", content = @Content)
+    })
+    @GetMapping("/historial")
+    public ResponseEntity<List<ReservaResponseDTO>> getHistorialGeneral(Authentication authentication) {
+
+        CustomUserDetails user = (CustomUserDetails) authentication.getPrincipal();
+
+        boolean esAdminOEmpleado = user.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ADMIN") || a.getAuthority().equals("EMPLEADO"));
+
+        if (!esAdminOEmpleado) {
+            throw new AccesoProhibidoException("Solo administradores o empleados pueden ver el historial general");
+        }
+
+        List<ReservaResponseDTO> historial = reservaService.obtenerHistorialGeneral()
+                .stream()
+                .map(reserva -> new ReservaResponseDTO(
+                        reserva.getId(),
+                        reserva.getSala().getNumero(),
+                        reserva.getSala().getCantPersonas(),
+                        reserva.getFechaInicio(),
+                        reserva.getFechaFinal(),
+                        reserva.getTipoPago(),
+                        reserva.getEstado().name(),
+                        reserva.getCliente().getEmail(),
+                        reserva.getMonto()
+                ))
+                .toList();
+
+        return ResponseEntity.ok(historial);
+    }
+
+
+
     @Operation(summary = "Crear una reserva", description = "Permite a un cliente autenticado crear una nueva reserva.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Reserva creada correctamente", content = @Content(schema = @Schema(implementation = Reserva.class))),

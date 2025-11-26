@@ -18,6 +18,8 @@ import jakarta.persistence.EntityNotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+import java.util.Comparator;
+
 
 import org.springframework.transaction.annotation.Transactional;
 
@@ -217,5 +219,41 @@ public class ReservaService {
     public void updateReserva(Reserva reserva) {
         reservaRepository.save(reserva);
     }
+
+    /**
+     * Historial de un cliente: reservas pasadas o no activas,
+     * ordenadas de la más nueva a la más vieja.
+     */
+    public List<Reserva> obtenerHistorialCliente(Long clienteId) {
+        LocalDateTime ahora = LocalDateTime.now();
+
+        return reservaRepository.findByClienteId(clienteId)
+                .stream()
+                // solo historial: reservas que ya terminaron o que NO están activas
+                .filter(reserva ->
+                        reserva.getFechaFinal().isBefore(ahora)
+                                || reserva.getEstado() != Reserva.Estado.ACTIVO
+                )
+                .sorted(Comparator.comparing(Reserva::getFechaInicio).reversed())
+                .toList();
+    }
+
+    /**
+     * Historial general: todas las reservas pasadas o no activas,
+     * ordenadas de la más nueva a la más vieja.
+     */
+    public List<Reserva> obtenerHistorialGeneral() {
+        LocalDateTime ahora = LocalDateTime.now();
+
+        return reservaRepository.findAll()
+                .stream()
+                .filter(reserva ->
+                        reserva.getFechaFinal().isBefore(ahora)
+                                || reserva.getEstado() != Reserva.Estado.ACTIVO
+                )
+                .sorted(Comparator.comparing(Reserva::getFechaInicio).reversed())
+                .toList();
+    }
+
 
 }
