@@ -18,6 +18,8 @@ import jakarta.persistence.EntityNotFoundException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
+
+import java.time.LocalDate;
 import java.util.Comparator;
 
 
@@ -46,13 +48,32 @@ public class ReservaService {
     private UsuarioRepository usuarioRepository;
 
     @Transactional
-    public Reserva saveReserva(Long clienteId, Long salaId, LocalDateTime fechaInicio, LocalDateTime fechaFinal, Reserva.TipoPago tipoPago, BigDecimal monto) {
+    public Reserva saveReserva(Long clienteId, Long salaId,
+                               LocalDateTime fechaInicio,
+                               LocalDateTime fechaFinal,
+                               Reserva.TipoPago tipoPago,
+                               BigDecimal monto) {
 
-        Cliente cliente = clienteRepository.findById(clienteId).orElseThrow(() ->
-                new RuntimeException("Cliente no encontrado"));
-        Sala sala = salaRepository.findById(salaId).orElseThrow(() ->
-                new RuntimeException("Sala no encontrada"));
-        List<Reserva> conflictingReservas = reservaRepository.findConflictingReservas(salaId, fechaInicio, fechaFinal);
+        LocalDate hoy = LocalDate.now();
+
+        // 1) No permitir reservas en días anteriores a hoy
+        if (fechaInicio.toLocalDate().isBefore(hoy)) {
+            throw new IllegalArgumentException("No se puede crear una reserva en una fecha anterior a hoy");
+        }
+
+        // 2) Coherencia básica de rango
+        if (fechaFinal.isBefore(fechaInicio)) {
+            throw new IllegalArgumentException("La fecha final debe ser posterior a la inicial");
+        }
+
+        Cliente cliente = clienteRepository.findById(clienteId)
+                .orElseThrow(() -> new RuntimeException("Cliente no encontrado"));
+
+        Sala sala = salaRepository.findById(salaId)
+                .orElseThrow(() -> new RuntimeException("Sala no encontrada"));
+
+        List<Reserva> conflictingReservas =
+                reservaRepository.findConflictingReservas(salaId, fechaInicio, fechaFinal);
         if (!conflictingReservas.isEmpty()) {
             throw new TiempoDeReservaOcupadoException("El turno se superpone con otro existente");
         }
@@ -131,12 +152,26 @@ public class ReservaService {
         if (!reservaRepository.existsById(reserva.getId())) {
             throw new EntityNotFoundException("La reserva no existe");
         }
-        List<Reserva> conflictingReservas = reservaRepository.findConflictingReservas(
-                        reserva.getSala().getId(),
-                        reserva.getFechaInicio(),
-                        reserva.getFechaFinal()
-                ).stream().filter(r -> !r.getId().equals(reserva.getId())) // исключаем текущую
-                .collect(Collectors.toList());
+
+        LocalDate hoy = LocalDate.now();
+
+        if (reserva.getFechaInicio().toLocalDate().isBefore(hoy)) {
+            throw new IllegalArgumentException("No se puede mover la reserva a una fecha anterior a hoy");
+        }
+
+        if (reserva.getFechaFinal().isBefore(reserva.getFechaInicio())) {
+            throw new IllegalArgumentException("La fecha final debe ser posterior a la inicial");
+        }
+
+        List<Reserva> conflictingReservas =
+                reservaRepository.findConflictingReservas(
+                                reserva.getSala().getId(),
+                                reserva.getFechaInicio(),
+                                reserva.getFechaFinal()
+                        ).stream()
+                        .filter(r -> !r.getId().equals(reserva.getId()))
+                        .toList();
+
         if (!conflictingReservas.isEmpty()) {
             throw new TiempoDeReservaOcupadoException("El turno se superpone con otro existente");
         }
@@ -224,13 +259,15 @@ public class ReservaService {
      * Historial de un cliente: reservas pasadas o no activas,
      * ordenadas de la más nueva a la más vieja.
      */
-    public List<Reserva> obtenerHistorialCliente(Long clienteId) {
+    public List<Reserva> obtenerHistorialCliente(Long idCliente) {
         LocalDateTime ahora = LocalDateTime.now();
 
-        return reservaRepository.findByClienteId(clienteId)
+        return reservaRepository.findByClienteId(idCliente)
                 .stream()
-                // solo historial: reservas que ya terminaron o que NO están activas
                 .filter(reserva ->
+                        // Igual que en el historial general:
+                        //  - reservas que ya terminaron
+                        //  - o reservas cuyo estado NO es ACTIVO (CANCELADO, FINALIZADO, etc.)
                         reserva.getFechaFinal().isBefore(ahora)
                                 || reserva.getEstado() != Reserva.Estado.ACTIVO
                 )
