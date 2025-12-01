@@ -65,6 +65,7 @@ public class Reserva {
     public enum TipoPago {
         EFECTIVO,
         TRANSFERENCIA,
-        TARJETA
+        TARJETA,
+        MERCADO_PAGO
     }
 }
