@@ -247,8 +247,10 @@ public class ReservaApiController {
             throw new RuntimeException("Solo se pueden modificar reservas activas");
         }
 
-        Sala sala = salaRepository.findById(request.getSalaId())
-                .orElseThrow(() -> new RuntimeException("Sala no encontrada"));
+        // Evita que se pueda asignar una sala eliminada a una reserva
+        Sala sala = salaRepository.findByIdAndEliminadaFalse(request.getSalaId())
+                .orElseThrow(() -> new RuntimeException("Sala no encontrada o fue eliminada"));
+
 
         reservaExistente.setSala(sala);
         reservaExistente.setFechaInicio(request.getFechaInicio());
@@ -278,8 +280,10 @@ public class ReservaApiController {
         Reserva reserva = reservaService.findById(request.getId())
                 .orElseThrow(() -> new ReservaNotFoundException("Reserva no encontrada"));
 
-        Sala sala = salaRepository.findById(request.getSalaId())
-                .orElseThrow(() -> new SalaNotFoundException("Sala no encontrada"));
+        // Evita que se pueda asignar una sala eliminada a una reserva
+        Sala sala = salaRepository.findByIdAndEliminadaFalse(request.getSalaId())
+                .orElseThrow(() -> new RuntimeException("Sala no encontrada o fue eliminada"));
+
 
         if (!request.getFechaInicio().isBefore(request.getFechaFinal())) {
             throw new IllegalArgumentException("La hora de inicio debe ser menor que la hora de fin.");

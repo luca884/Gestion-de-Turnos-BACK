@@ -77,18 +77,13 @@ public class SalaApiController {
             @ApiResponse(responseCode = "500", description = "Error inesperado en el servidor")
     })
     @DeleteMapping("/{id}")
-    public ResponseEntity<?> deleteSalaById(@PathVariable Long id) {
-        try {
-            salaService.deleteById(id);
-            return ResponseEntity.noContent().build();
-        } catch (DataIntegrityViolationException ex) {
-            return ResponseEntity.status(HttpStatus.CONFLICT)
-                    .body("No se puede eliminar la sala porque tiene reservas activas.");
-        } catch (Exception ex) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Error inesperado al eliminar la sala.");
-        }
+    public ResponseEntity<Void> deleteSalaById(@PathVariable Long id) {
+        // Borrado lógico: marca eliminada=true.
+        // Si hay reservas activas -> SalaConReservasActivasException -> 409
+        salaService.deleteById(id);
+        return ResponseEntity.noContent().build();
     }
+
 
 
     @Operation(summary = "Verifica si una sala puede ser eliminada (sin reservas activas)")

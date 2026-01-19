@@ -63,4 +63,11 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", ex.getMessage()));
     }
 
+    @ExceptionHandler(SalaConReservasActivasException.class)
+    public ResponseEntity<?> handleSalaConReservasActivas(SalaConReservasActivasException ex) {
+        // 409 = conflicto de negocio (regla del sistema)
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("error", ex.getMessage()));
+    }
+
+
 }

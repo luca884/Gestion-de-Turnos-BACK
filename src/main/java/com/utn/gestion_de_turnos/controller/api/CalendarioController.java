@@ -106,25 +106,20 @@ public class CalendarioController {
     @GetMapping("/eventos")
     @Operation(
             summary = "Obtener eventos del calendario",
-            description = "Devuelve todas las reservas activas como eventos. El cliente autenticado verá cuáles le pertenecen."
+            description = "Devuelve reservas ACTIVAS y FINALIZADAS como eventos. El cliente autenticado verá cuáles le pertenecen."
     )
-    @ApiResponses(value = {
-            @ApiResponse(responseCode = "200", description = "Lista de eventos obtenida con éxito",
-                    content = @Content(schema = @Schema(implementation = EventoCalendarioDTO.class))),
-            @ApiResponse(responseCode = "401", description = "No autenticado")
-    })
     public List<EventoCalendarioDTO> obtenerEventos(Authentication authentication) {
 
-        // puede venir null si no hay login
         Long clienteId = null;
         if (authentication != null && authentication.getPrincipal() instanceof CustomUserDetails cud) {
             clienteId = cud.getId();
         }
-
-        // 👇 esto es lo que pide el error: usar una variable final dentro del stream
         final Long finalClienteId = clienteId;
 
-        List<Reserva> todasReservas = reservaService.findAllActivas();
+        // ✅ Para el calendario interno queremos ver tanto reservas ACTIVAS como FINALIZADAS.
+        // CANCELADAS no se incluyen porque se eliminan del Google Calendar y además no querés mostrarlas aquí.
+        List<Reserva> todasReservas = reservaService.findAllActivasYFinalizadas();
+
         DateTimeFormatter formatter = DateTimeFormatter.ofPattern("HH:mm");
 
         return todasReservas.stream()
@@ -134,10 +129,12 @@ public class CalendarioController {
                     dto.setStart(reserva.getFechaInicio());
                     dto.setEnd(reserva.getFechaFinal());
 
+                    // ✅ Le enviamos el estado al frontend para que pueda pintar distinto (color, ícono, etc.)
+                    dto.setEstado(reserva.getEstado() != null ? reserva.getEstado().name() : null);
+
                     String horaInicio = reserva.getFechaInicio().format(formatter);
                     String horaFin = reserva.getFechaFinal().format(formatter);
 
-                    // si hay usuario logueado y la reserva es suya
                     if (finalClienteId != null
                             && reserva.getCliente() != null
                             && reserva.getCliente().getId().equals(finalClienteId)) {
@@ -154,4 +151,5 @@ public class CalendarioController {
                 })
                 .collect(Collectors.toList());
     }
+
 }
