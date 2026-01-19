@@ -11,4 +11,11 @@ public class EventoCalendarioDTO {
     private LocalDateTime end;
     private String title;
     private String description;
+    /**
+     * Estado de la reserva (ACTIVO / FINALIZADO / CANCELADO).
+     *
+     * Nota: agregar este campo NO rompe el frontend existente (si no lo usa, se ignora),
+     * pero te permite pintar distinto en el calendario según el estado.
+     */
+    private String estado;
 }

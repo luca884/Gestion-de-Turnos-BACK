@@ -20,6 +20,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 
 
@@ -32,7 +34,9 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @Service
 public class ReservaService {
 
@@ -47,12 +51,41 @@ public class ReservaService {
     @Autowired
     private UsuarioRepository usuarioRepository;
 
+    // ✅ Zona horaria fija del negocio (evita problemas si el server corre en otra zona)
+    private static final ZoneId ZONE_ID = ZoneId.of("America/Argentina/Buenos_Aires");
+
+    /**
+     * Regla de negocio elegida:
+     * - La reserva NO puede comenzar "hoy".
+     * - Además, debe tener al menos X horas de anticipación desde "ahora".
+     *
+     * Mínimo permitido:
+     *   max( inicioDelDiaDeManana , ahora + X horas )
+     */
+    private static final long MIN_ANTICIPACION_HORAS = 1;
+
+    public static final DateTimeFormatter FECHA_HORA_FMT =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
+
+
     @Transactional
     public Reserva saveReserva(Long clienteId, Long salaId,
                                LocalDateTime fechaInicio,
                                LocalDateTime fechaFinal,
                                Reserva.TipoPago tipoPago,
                                BigDecimal monto) {
+
+        // ✅ Validación principal solicitada:
+        // No permitir crear reservas en el pasado ni "para hoy".
+        // Se exige que el inicio sea, como mínimo, desde el día siguiente,
+        // respetando además un margen de anticipación (MIN_ANTICIPACION_HORAS).
+        validarFechaInicioParaCreacion(fechaInicio);
+
+        // Coherencia básica: la fecha final debe ser estrictamente posterior
+        if (!fechaFinal.isAfter(fechaInicio)) {
+            throw new IllegalArgumentException("La fecha final debe ser posterior a la inicial");
+        }
+
 
         LocalDate hoy = LocalDate.now();
 
@@ -69,8 +102,10 @@ public class ReservaService {
         Cliente cliente = clienteRepository.findById(clienteId)
                 .orElseThrow(() -> new RuntimeException("Cliente no encontrado"));
 
-        Sala sala = salaRepository.findById(salaId)
-                .orElseThrow(() -> new RuntimeException("Sala no encontrada"));
+        // No permitimos reservar una sala eliminada.
+        Sala sala = salaRepository.findByIdAndEliminadaFalse(salaId)
+                .orElseThrow(() -> new RuntimeException("Sala no encontrada o fue eliminada"));
+
 
         List<Reserva> conflictingReservas =
                 reservaRepository.findConflictingReservas(salaId, fechaInicio, fechaFinal);
@@ -151,6 +186,13 @@ public class ReservaService {
     public void modificar(Reserva reserva) {
         if (!reservaRepository.existsById(reserva.getId())) {
             throw new EntityNotFoundException("La reserva no existe");
+        }
+
+        // ✅ Misma regla que al crear: evita bypass por modificación
+        validarFechaInicioParaCreacion(reserva.getFechaInicio());
+
+        if (!reserva.getFechaFinal().isAfter(reserva.getFechaInicio())) {
+            throw new IllegalArgumentException("La fecha final debe ser posterior a la inicial");
         }
 
         LocalDate hoy = LocalDate.now();
@@ -238,6 +280,7 @@ public class ReservaService {
 
 
     public List<Reserva> findAllActivas() {
+        finalizarReservasVencidas(); // ✅ evita “ACTIVAS viejas”
         return reservaRepository.findByEstado(Reserva.Estado.ACTIVO);
     }
 
@@ -247,9 +290,10 @@ public class ReservaService {
 
 
     public boolean existsActiveReservaForSala(Long salaId) {
-        List<Reserva> reservas = reservaRepository.findBySalaIdAndEstado(salaId, Reserva.Estado.ACTIVO);
-        return !reservas.isEmpty();
+        // Chequeo eficiente: evita traer una lista completa desde DB.
+        return reservaRepository.existsBySalaIdAndEstado(salaId, Reserva.Estado.ACTIVO);
     }
+
 
     public void updateReserva(Reserva reserva) {
         reservaRepository.save(reserva);
@@ -291,6 +335,95 @@ public class ReservaService {
                 .sorted(Comparator.comparing(Reserva::getFechaInicio).reversed())
                 .toList();
     }
+
+    /**
+     * Valida que la fecha de inicio cumpla la regla de negocio para CREAR reservas.
+     *
+     * Regla:
+     *  - No se permite reservar "hoy" (aunque sea más tarde).
+     *  - Y se exige un mínimo de anticipación (MIN_ANTICIPACION_HORAS) desde el momento actual.
+     */
+    private void validarFechaInicioParaCreacion(LocalDateTime fechaInicio) {
+        // Hora actual (del negocio) usando zona explícita
+        LocalDateTime ahora = LocalDateTime.now(ZONE_ID);
+
+        // Inicio del día siguiente (00:00 de mañana)
+        LocalDateTime inicioManana = LocalDate.now(ZONE_ID).plusDays(1).atStartOfDay();
+
+        // Anticipación mínima desde "ahora" (ej: ahora + 2 horas)
+        LocalDateTime minimoPorAnticipacion = ahora.plusHours(MIN_ANTICIPACION_HORAS);
+
+        // Mínimo definitivo: el mayor entre "mañana 00:00" y "ahora + X horas"
+        LocalDateTime minimoPermitido = inicioManana.isAfter(minimoPorAnticipacion)
+                ? inicioManana
+                : minimoPorAnticipacion;
+
+        if (fechaInicio.isBefore(minimoPermitido)) {
+            // Mensaje pensado para que el frontend pueda mostrarlo tal cual
+            throw new IllegalArgumentException(
+                    "La reserva debe comenzar a partir de " + minimoPermitido.format(FECHA_HORA_FMT)
+                            + " (hora local)."
+            );
+        }
+    }
+
+    /**
+     * Marca como FINALIZADO todas las reservas que:
+     * - siguen en estado ACTIVO
+     * - pero su fechaFinal ya pasó (<= ahora)
+     *
+     * Se ejecuta:
+     * - automáticamente por un scheduler (cada 60s), y
+     * - también antes de listar/buscar reservas (para consistencia inmediata).
+     */
+    @Transactional
+    public int finalizarReservasVencidas() {
+        LocalDateTime ahora = LocalDateTime.now(ZONE_ID);
+
+        // 1) Traer vencidas activas (necesitamos datos para calendar)
+        List<Reserva> vencidas = reservaRepository
+                .findByEstadoAndFechaFinalLessThanEqual(Reserva.Estado.ACTIVO, ahora);
+
+        if (vencidas.isEmpty()) return 0;
+
+        // 2) Pasarlas a FINALIZADO en DB
+        vencidas.forEach(r -> r.setEstado(Reserva.Estado.FINALIZADO));
+        reservaRepository.saveAll(vencidas);
+
+        // 3) Mejor esfuerzo: marcar evento en Calendar (no rompe si falla uno)
+        for (Reserva r : vencidas) {
+            String eventId = r.getGoogleEventId();
+            if (eventId == null || eventId.isBlank()) continue;
+
+            try {
+                googleCalendarService.marcarEventoFinalizado(eventId, r, ahora);
+            } catch (Exception e) {
+                log.warn("No se pudo marcar FINALIZADO en Google Calendar. reservaId={} eventId={} error={}",
+                        r.getId(), eventId, e.getMessage());
+            }
+        }
+
+        return vencidas.size();
+    }
+
+
+    /**
+     * Reservas que se muestran en el calendario interno de la web.
+     *
+     * - Incluye: ACTIVO + FINALIZADO
+     * - Excluye: CANCELADO (porque ya lo eliminás del Google Calendar y no querés mostrarlo aquí)
+     */
+    public List<Reserva> findAllActivasYFinalizadas() {
+        // ✅ Antes de devolver, aseguramos que todo lo vencido esté FINALIZADO
+        finalizarReservasVencidas();
+
+        return reservaRepository.findByEstadoIn(List.of(
+                Reserva.Estado.ACTIVO,
+                Reserva.Estado.FINALIZADO
+        ));
+    }
+
+
 
 
 }

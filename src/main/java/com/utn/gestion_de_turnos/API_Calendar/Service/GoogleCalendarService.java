@@ -2,6 +2,7 @@
 package com.utn.gestion_de_turnos.API_Calendar.Service;
 
 import com.google.api.client.util.DateTime;
+import com.google.api.client.util.Value;
 import com.google.api.services.calendar.Calendar;
 import com.google.api.services.calendar.model.*;
 import com.utn.gestion_de_turnos.exception.GoogleCalendarException;
@@ -19,10 +20,10 @@ import java.security.GeneralSecurityException;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.util.Date;
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 import java.util.stream.Collectors;
+
+import static com.utn.gestion_de_turnos.service.ReservaService.FECHA_HORA_FMT;
 
 @Service
 public class GoogleCalendarService {
@@ -37,6 +38,9 @@ public class GoogleCalendarService {
 
     @Autowired
     private GoogleCalendarClientFactory calendarClientFactory;
+
+    @Value("${google.calendar.color.finalizado:2}")
+    private String colorFinalizadoId; // ✅ configurable (default 2)
 
     private Calendar getCalendar() throws IOException, GeneralSecurityException {
         return calendarClientFactory.getCalendarService();
@@ -168,4 +172,51 @@ public class GoogleCalendarService {
         String email = SecurityContextHolder.getContext().getAuthentication().getName();
         return usuarioRepository.findByEmail(email).orElseThrow(() -> new RuntimeException("Usuario no encontrado"));
     }
+
+
+
+    public void marcarEventoFinalizado(String idEvento, Reserva reserva, LocalDateTime finalizadoEn) {
+        try {
+            Calendar calendar = getCalendar();
+            Event event = calendar.events().get(CALENDAR_ID, idEvento).execute();
+
+            // ✅ 1) Cambiar color
+            event.setColorId(colorFinalizadoId);
+
+            // ✅ 2) Marcar el titulo para que se vea rapido en Calendar
+            String summary = event.getSummary() == null ? "" : event.getSummary();
+            if (!summary.startsWith("✅ FINALIZADO - ")) {
+                event.setSummary("✅ FINALIZADO - " + summary);
+            }
+
+            // ✅ 3) Agregar bloque en la descripcion
+            String desc = event.getDescription() == null ? "" : event.getDescription();
+            if (!desc.contains("Estado: FINALIZADO")) {
+                desc += "\n\n---\nEstado: FINALIZADO\nReserva ID: " + reserva.getId()
+                        + "\nFinalizado: " + finalizadoEn.format(FECHA_HORA_FMT) + "\n";
+            }
+            event.setDescription(desc);
+
+            // ✅ 4) Metadata interna (no siempre visible en UI, pero útil)
+            Event.ExtendedProperties props = event.getExtendedProperties();
+            if (props == null) props = new Event.ExtendedProperties();
+
+            Map<String, String> priv = props.getPrivate();
+            if (priv == null) priv = new HashMap<>();
+
+            priv.put("reservaId", String.valueOf(reserva.getId()));
+            priv.put("estado", "FINALIZADO");
+            priv.put("finalizadoEn", finalizadoEn.toString());
+
+            props.setPrivate(priv);
+            event.setExtendedProperties(props);
+
+            calendar.events().update(CALENDAR_ID, idEvento, event).execute();
+
+        } catch (IOException | GeneralSecurityException e) {
+            throw new GoogleCalendarException("Error al marcar evento FINALIZADO en Google Calendar: " + e.getMessage());
+        }
+    }
+
+
 }
