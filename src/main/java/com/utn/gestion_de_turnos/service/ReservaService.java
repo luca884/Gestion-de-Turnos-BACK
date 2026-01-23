@@ -24,7 +24,6 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 
-
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
@@ -33,7 +32,6 @@ import java.security.GeneralSecurityException;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
-import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -112,22 +110,68 @@ public class ReservaService {
         if (!conflictingReservas.isEmpty()) {
             throw new TiempoDeReservaOcupadoException("El turno se superpone con otro existente");
         }
+
+        if (tipoPago == Reserva.TipoPago.MERCADO_PAGO) {
+            if (monto == null || monto.compareTo(BigDecimal.ZERO) <= 0) {
+                throw new IllegalArgumentException("El monto debe ser mayor a 0 para Mercado Pago");
+            }
+        } else {
+            if (monto == null) monto = BigDecimal.ZERO;
+        }
+
         Reserva reserva = new Reserva();
         reserva.setCliente(cliente);
         reserva.setSala(sala);
         reserva.setFechaInicio(fechaInicio);
         reserva.setFechaFinal(fechaFinal);
         reserva.setTipoPago(tipoPago);
-        reserva.setEstado(Reserva.Estado.ACTIVO);
+        if (tipoPago == Reserva.TipoPago.MERCADO_PAGO) {
+            reserva.setEstado(Reserva.Estado.PENDIENTE_CONFIRMACION_PAGO);
+        } else {
+            reserva.setEstado(Reserva.Estado.ACTIVO);
+        }
         reserva.setMonto(monto);
 
+        reserva = reservaRepository.save(reserva);
+
+        // Crear evento en Google Calendar
+        if (reserva.getEstado() == Reserva.Estado.ACTIVO) {
+            try {
+                String titulo = "Reserva de " + reserva.getCliente().getNombre();
+                String descripcion = "Sala: " + reserva.getSala().getNumero() + "\nEmailCliente: " + reserva.getCliente().getEmail();
+
+                Event evento = googleCalendarService.crearEventoConReserva(titulo, descripcion, reserva.getFechaInicio(), reserva.getFechaFinal());
+
+                // Guardar el ID del evento en la reserva
+                reserva.setGoogleEventId(evento.getId());
+
+                // Guardar de nuevo en la base con el ID de Google
+            } catch (IOException | GeneralSecurityException e) {
+                throw new RuntimeException("Error al crear el evento en Google Calendar: " + e.getMessage(), e);
+            }
+            reserva = reservaRepository.save(reserva);
+        }
+
+        return reserva;
+    }
+
+    @Transactional
+    public void confirmarPago(Long reservaId) {
+
+        Reserva reserva = reservaRepository.findById(reservaId)
+                .orElseThrow(() -> new ReservaNotFoundException("Reserva no encontrada"));
+
+        if (reserva.getEstado() != Reserva.Estado.PENDIENTE_CONFIRMACION_PAGO) {
+            return;
+        }
+
+        reserva.setEstado(Reserva.Estado.ACTIVO);
         reservaRepository.save(reserva);
 
         // Crear evento en Google Calendar
         try {
             String titulo = "Reserva de " + reserva.getCliente().getNombre();
             String descripcion = "Sala: " + reserva.getSala().getNumero() + "\nEmailCliente: " + reserva.getCliente().getEmail();
-
 
             Event evento = googleCalendarService.crearEventoConReserva(titulo, descripcion, reserva.getFechaInicio(), reserva.getFechaFinal());
 
@@ -138,7 +182,7 @@ public class ReservaService {
         } catch (IOException | GeneralSecurityException e) {
             throw new RuntimeException("Error al crear el evento en Google Calendar: " + e.getMessage(), e);
         }
-        return reservaRepository.save(reserva);
+        reservaRepository.save(reserva);
     }
 
     @Transactional
@@ -151,7 +195,7 @@ public class ReservaService {
             throw new AccesoProhibidoException("No tienes permiso para cancelar esta reserva");
         }
 
-        if (reserva.getEstado() != Reserva.Estado.ACTIVO) {
+        if (reserva.getEstado() != Reserva.Estado.ACTIVO && reserva.getEstado() != Reserva.Estado.PENDIENTE_CONFIRMACION_PAGO) {
             throw new ReservaNoCancelableException("Solo se pueden cancelar reservas activas");
         }
 
@@ -160,7 +204,9 @@ public class ReservaService {
         }
 
         reserva.setEstado(Reserva.Estado.CANCELADO);
-        googleCalendarService.eliminarEvento(reserva.getGoogleEventId());
+        if (reserva.getGoogleEventId() != null && !reserva.getGoogleEventId().isBlank()) {
+            googleCalendarService.eliminarEvento(reserva.getGoogleEventId());
+        }
         reservaRepository.save(reserva);
     }
 
@@ -169,7 +215,7 @@ public class ReservaService {
         Reserva reserva = reservaRepository.findById(reservaId)
                 .orElseThrow(() -> new ReservaNotFoundException("Reserva no encontrada"));
 
-        if (reserva.getEstado() != Reserva.Estado.ACTIVO) {
+        if (reserva.getEstado() != Reserva.Estado.ACTIVO && reserva.getEstado() != Reserva.Estado.PENDIENTE_CONFIRMACION_PAGO) {
             throw new ReservaNoCancelableException("Solo se pueden cancelar reservas activas");
         }
 
@@ -177,7 +223,9 @@ public class ReservaService {
             throw new ReservaNoCancelableException("No se puede cancelar una reserva que ya ha comenzado");
         }
         reserva.setEstado(Reserva.Estado.CANCELADO);
-        googleCalendarService.eliminarEvento(reserva.getGoogleEventId());
+        if (reserva.getGoogleEventId() != null && !reserva.getGoogleEventId().isBlank()) {
+            googleCalendarService.eliminarEvento(reserva.getGoogleEventId());
+        }
         reservaRepository.save(reserva);
     }
 
@@ -221,16 +269,18 @@ public class ReservaService {
         reservaRepository.save(reserva);
 
         // Modificar evento en Google Calendar
-        String titulo = "Reserva de " + reserva.getCliente().getNombre();
-        String descripcion = "Sala: " + reserva.getSala().getNumero() + "\nEmailCliente: " + reserva.getCliente().getEmail();
+        if (reserva.getGoogleEventId() != null && !reserva.getGoogleEventId().isBlank()) {
+            String titulo = "Reserva de " + reserva.getCliente().getNombre();
+            String descripcion = "Sala: " + reserva.getSala().getNumero() + "\nEmailCliente: " + reserva.getCliente().getEmail();
 
-        googleCalendarService.modificarEvento(
-                reserva.getGoogleEventId(),
-                titulo,
-                descripcion,
-                reserva.getFechaInicio(),
-                reserva.getFechaFinal()
-        );
+            googleCalendarService.modificarEvento(
+                    reserva.getGoogleEventId(),
+                    titulo,
+                    descripcion,
+                    reserva.getFechaInicio(),
+                    reserva.getFechaFinal()
+            );
+        }
     }
 
 
@@ -252,7 +302,9 @@ public class ReservaService {
 
         if (reservaRepository.existsById(id)) {
             Optional<Reserva> reserva = reservaRepository.findById(id);
-            googleCalendarService.eliminarEvento(reserva.get().getGoogleEventId());
+            if (reserva.isPresent() && reserva.get().getGoogleEventId() != null && !reserva.get().getGoogleEventId().isBlank()) {
+                googleCalendarService.eliminarEvento(reserva.get().getGoogleEventId());
+            }
             reservaRepository.deleteById(id);
         } else {
             throw new IllegalArgumentException("La reserva no existe");
@@ -422,8 +474,4 @@ public class ReservaService {
                 Reserva.Estado.FINALIZADO
         ));
     }
-
-
-
-
 }

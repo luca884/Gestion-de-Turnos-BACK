@@ -59,7 +59,8 @@ public class Reserva {
     public enum Estado {
         ACTIVO,
         CANCELADO,
-        FINALIZADO
+        FINALIZADO,
+        PENDIENTE_CONFIRMACION_PAGO
     }
 
     public enum TipoPago {
