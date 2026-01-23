@@ -197,7 +197,6 @@ public class ReservaApiController {
         return ResponseEntity.ok(Map.of("message", "Reserva cancelada correctamente"));
     }
 
-
     @Operation(summary = "Cancelar una reserva (empleado)", description = "Permite a un empleado cancelar cualquier reserva.")
     @ApiResponses(value = {
             @ApiResponse(responseCode = "200", description = "Reserva cancelada correctamente", content = @Content)
@@ -346,5 +345,23 @@ public class ReservaApiController {
 
         return ResponseEntity.ok(Map.of("initPoint", initPoint));
     }
+
+
+    @Operation(
+            summary = "Confirmar pago de una reserva",
+            description = "Cambia el estado de la reserva de PENDIENTE_CONFIRMACION_PAGO a ACTIVO. Solo debería usarse cuando un empleado verifica el pago."
+    )
+    @ApiResponses(value = {
+            @ApiResponse(responseCode = "200", description = "Pago confirmado y reserva activada", content = @Content),
+            @ApiResponse(responseCode = "404", description = "Reserva no encontrada", content = @Content),
+            @ApiResponse(responseCode = "400", description = "La reserva no está en estado PENDIENTE_CONFIRMACION_PAGO", content = @Content),
+            @ApiResponse(responseCode = "403", description = "Acceso prohibido", content = @Content)
+    })
+    @PutMapping("/{id}/confirmar-pago")
+    public ResponseEntity<Void> confirmarPago(@PathVariable Long id) {
+        reservaService.confirmarPago(id);
+        return ResponseEntity.ok().build();
+    }
+
 
 }

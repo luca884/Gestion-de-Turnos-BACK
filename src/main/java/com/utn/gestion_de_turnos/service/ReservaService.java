@@ -77,6 +77,11 @@ public class ReservaService {
         // No permitir crear reservas en el pasado ni "para hoy".
         // Se exige que el inicio sea, como mínimo, desde el día siguiente,
         // respetando además un margen de anticipación (MIN_ANTICIPACION_HORAS).
+
+
+        log.info("[CREAR RESERVA] clienteId={} salaId={} inicio={} fin={} tipoPago={} monto={}",
+                clienteId, salaId, fechaInicio, fechaFinal, tipoPago, monto);
+
         validarFechaInicioParaCreacion(fechaInicio);
 
         // Coherencia básica: la fecha final debe ser estrictamente posterior
@@ -216,7 +221,7 @@ public class ReservaService {
                 .orElseThrow(() -> new ReservaNotFoundException("Reserva no encontrada"));
 
         if (reserva.getEstado() != Reserva.Estado.ACTIVO && reserva.getEstado() != Reserva.Estado.PENDIENTE_CONFIRMACION_PAGO) {
-            throw new ReservaNoCancelableException("Solo se pueden cancelar reservas activas");
+            throw new ReservaNoCancelableException("Solo se pueden cancelar reservas activas o pendientes de confirmación");
         }
 
         if (reserva.getFechaInicio().isBefore(LocalDateTime.now())) {
@@ -332,8 +337,11 @@ public class ReservaService {
 
 
     public List<Reserva> findAllActivas() {
-        finalizarReservasVencidas(); // ✅ evita “ACTIVAS viejas”
-        return reservaRepository.findByEstado(Reserva.Estado.ACTIVO);
+        finalizarReservasVencidas(); // evita “ACTIVAS viejas”
+        return reservaRepository.findByEstadoIn(List.of(
+                Reserva.Estado.ACTIVO,
+                Reserva.Estado.PENDIENTE_CONFIRMACION_PAGO
+        ));
     }
 
     public List<Reserva> findByEstado(Reserva.Estado estado) {
