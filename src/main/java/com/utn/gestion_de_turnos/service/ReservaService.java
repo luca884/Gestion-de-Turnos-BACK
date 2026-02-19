@@ -291,7 +291,9 @@ public class ReservaService {
 
     public boolean existsActiveReservaForSala(Long salaId) {
         // Chequeo eficiente: evita traer una lista completa desde DB.
-        return reservaRepository.existsBySalaIdAndEstado(salaId, Reserva.Estado.ACTIVO);
+        // Incluye PENDIENTE_CONFIRMACION_PAGO porque esas reservas también bloquean la sala.
+        return reservaRepository.existsBySalaIdAndEstado(salaId, Reserva.Estado.ACTIVO)
+                || reservaRepository.existsBySalaIdAndEstado(salaId, Reserva.Estado.PENDIENTE_CONFIRMACION_PAGO);
     }
 
 
@@ -302,6 +304,7 @@ public class ReservaService {
     /**
      * Historial de un cliente: reservas pasadas o no activas,
      * ordenadas de la más nueva a la más vieja.
+     * Excluye ACTIVO y PENDIENTE_CONFIRMACION_PAGO (esas van en "activas").
      */
     public List<Reserva> obtenerHistorialCliente(Long idCliente) {
         LocalDateTime ahora = LocalDateTime.now();
@@ -309,11 +312,9 @@ public class ReservaService {
         return reservaRepository.findByClienteId(idCliente)
                 .stream()
                 .filter(reserva ->
-                        // Igual que en el historial general:
-                        //  - reservas que ya terminaron
-                        //  - o reservas cuyo estado NO es ACTIVO (CANCELADO, FINALIZADO, etc.)
                         reserva.getFechaFinal().isBefore(ahora)
-                                || reserva.getEstado() != Reserva.Estado.ACTIVO
+                                || (reserva.getEstado() != Reserva.Estado.ACTIVO
+                                    && reserva.getEstado() != Reserva.Estado.PENDIENTE_CONFIRMACION_PAGO)
                 )
                 .sorted(Comparator.comparing(Reserva::getFechaInicio).reversed())
                 .toList();
@@ -322,6 +323,7 @@ public class ReservaService {
     /**
      * Historial general: todas las reservas pasadas o no activas,
      * ordenadas de la más nueva a la más vieja.
+     * Excluye ACTIVO y PENDIENTE_CONFIRMACION_PAGO (esas van en "activas").
      */
     public List<Reserva> obtenerHistorialGeneral() {
         LocalDateTime ahora = LocalDateTime.now();
@@ -330,7 +332,8 @@ public class ReservaService {
                 .stream()
                 .filter(reserva ->
                         reserva.getFechaFinal().isBefore(ahora)
-                                || reserva.getEstado() != Reserva.Estado.ACTIVO
+                                || (reserva.getEstado() != Reserva.Estado.ACTIVO
+                                    && reserva.getEstado() != Reserva.Estado.PENDIENTE_CONFIRMACION_PAGO)
                 )
                 .sorted(Comparator.comparing(Reserva::getFechaInicio).reversed())
                 .toList();
@@ -410,7 +413,7 @@ public class ReservaService {
     /**
      * Reservas que se muestran en el calendario interno de la web.
      *
-     * - Incluye: ACTIVO + FINALIZADO
+     * - Incluye: ACTIVO + PENDIENTE_CONFIRMACION_PAGO + FINALIZADO
      * - Excluye: CANCELADO (porque ya lo eliminás del Google Calendar y no querés mostrarlo aquí)
      */
     public List<Reserva> findAllActivasYFinalizadas() {
@@ -419,6 +422,7 @@ public class ReservaService {
 
         return reservaRepository.findByEstadoIn(List.of(
                 Reserva.Estado.ACTIVO,
+                Reserva.Estado.PENDIENTE_CONFIRMACION_PAGO,
                 Reserva.Estado.FINALIZADO
         ));
     }

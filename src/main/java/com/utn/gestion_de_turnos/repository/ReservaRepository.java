@@ -52,14 +52,15 @@ public interface ReservaRepository extends JpaRepository<Reserva, Long> {
 
 
     /**
-     * Busca reservas ACTIVAS que se superpongan con el rango.
+     * Busca reservas ACTIVAS o PENDIENTES DE PAGO que se superpongan con el rango.
      * (CANCELADO/FINALIZADO no deben bloquear turnos nuevos)
      */
     @Query("""
             SELECT t
             FROM Reserva t
             WHERE t.sala.id = :salaId
-              AND t.estado = com.utn.gestion_de_turnos.model.Reserva.Estado.ACTIVO
+              AND t.estado IN (com.utn.gestion_de_turnos.model.Reserva.Estado.ACTIVO,
+                               com.utn.gestion_de_turnos.model.Reserva.Estado.PENDIENTE_CONFIRMACION_PAGO)
               AND (:fechaInicio < t.fechaFinal AND :fechaFinal > t.fechaInicio)
             """)
     List<Reserva> findConflictingReservas(@Param("salaId") Long salaId,

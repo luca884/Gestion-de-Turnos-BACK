@@ -220,7 +220,7 @@ public class ReservaApiController {
             reservaService.eliminar(id);
             return "Reserva y evento eliminados.";
         } catch (Exception e) {
-            return "Error al eliminar: " + e.getMessage();
+            return "Error al eliminar la reserva. Intenta nuevamente.";
         }
     }
 

@@ -3,8 +3,10 @@ package com.utn.gestion_de_turnos.service;
 import com.fasterxml.jackson.databind.deser.CreatorProperty;
 import com.utn.gestion_de_turnos.model.Cliente;
 import com.utn.gestion_de_turnos.model.Empleado;
+import com.utn.gestion_de_turnos.model.Usuario;
 import com.utn.gestion_de_turnos.repository.ClienteRepository;
 import com.utn.gestion_de_turnos.repository.EmpleadoRepository;
+import com.utn.gestion_de_turnos.repository.UsuarioRepository;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,6 +27,9 @@ public class EmpleadoService {
 
     @Autowired
     private ClienteRepository clienteRepository;
+
+    @Autowired
+    private UsuarioRepository usuarioRepository;
 
 //    public Empleado save(Empleado empleado) {
 //        if (empleado == null) {
@@ -55,6 +60,14 @@ public Empleado save(Empleado empleado) {
             throw new IllegalArgumentException("La contraseña no puede ser nula o vacía al registrar un empleado nuevo");
         }
 
+        // Chequeo DNI único
+        if (empleado.getDni() != null && !empleado.getDni().isBlank()) {
+            java.util.Optional<Usuario> existePorDni = usuarioRepository.findByDni(empleado.getDni());
+            if (existePorDni.isPresent()) {
+                throw new IllegalArgumentException("DNI ya registrado");
+            }
+        }
+
         // encriptamos la pass en texto plano
         empleado.setContrasena(passwordEncoder.encode(empleado.getContrasena()));
         return empleadoRepository.save(empleado);
@@ -66,7 +79,17 @@ public Empleado save(Empleado empleado) {
 
     System.out.println("Hash actual en BD: " + existente.getContrasena());
 
-    // 2.1 actualizar datos básicos
+    // 2.1 Chequeo DNI único (solo si cambió)
+    String dniNuevo = empleado.getDni();
+    String dniActual = existente.getDni();
+    if (dniNuevo != null && !dniNuevo.isBlank() && !dniNuevo.equals(dniActual)) {
+        java.util.Optional<Usuario> existePorDni = usuarioRepository.findByDni(dniNuevo);
+        if (existePorDni.isPresent() && !existePorDni.get().getId().equals(empleado.getId())) {
+            throw new IllegalArgumentException("DNI ya registrado");
+        }
+    }
+
+    // 2.2 actualizar datos básicos
     existente.setNombre(empleado.getNombre());
     existente.setApellido(empleado.getApellido());
     existente.setDni(empleado.getDni());

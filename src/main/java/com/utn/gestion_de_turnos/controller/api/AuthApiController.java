@@ -93,6 +93,10 @@ public class AuthApiController {
         if (usuarioRepository.findByEmail(cliente.getEmail()).isPresent()) {
             return ResponseEntity.badRequest().body("Email ya registrado");
         }
+        if (cliente.getDni() != null && !cliente.getDni().isBlank()
+                && usuarioRepository.findByDni(cliente.getDni()).isPresent()) {
+            return ResponseEntity.badRequest().body("DNI ya registrado");
+        }
         cliente.setRol(Usuario.Rol.CLIENTE);
         clienteService.save(cliente);
         return ResponseEntity.status(HttpStatus.CREATED).body("Cliente registrado con éxito");
