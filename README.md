@@ -57,6 +57,7 @@ El sistema también mostrará calendarios, listados de turnos y permitirá aplic
 - Maven
 - Validación de formularios
 - API externa: Google Calendar
+- API externa: Mercado Pago
 - Lombok
 - Control de versiones: Git + GitHub
 
